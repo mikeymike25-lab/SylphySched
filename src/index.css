@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-matte-black: #080808;
+  --color-panel-bg: #0f0f11;
+  --color-card-bg: #141416;
+  --color-border-dark: #1e1e22;
+  --color-border-active: #2a2a30;
+  --color-cyber-cyan: #00e5ff;
+  --color-text-bright: #f3f4f6;
+  --color-text-muted: #9ca3af;
+  --color-text-dark: #4b5563;
+  
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  /* Custom Floating Liquid Blob Animations for Glassmorphism */
+  --animate-float-slow: float-slow 22s infinite ease-in-out;
+  --animate-float-delayed: float-delayed 28s infinite ease-in-out;
+
+  @keyframes float-slow {
+    0%, 100% {
+      transform: translate(0px, 0px) scale(1);
+    }
+    33% {
+      transform: translate(30px, -50px) scale(1.12);
+    }
+    66% {
+      transform: translate(-25px, 30px) scale(0.93);
+    }
+  }
+
+  @keyframes float-delayed {
+    0%, 100% {
+      transform: translate(0px, 0px) scale(1.1);
+    }
+    50% {
+      transform: translate(-45px, 35px) scale(0.88);
+    }
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--color-matte-black);
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    margin: 0;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar for high-tech aesthetic */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: var(--color-matte-black);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+}
