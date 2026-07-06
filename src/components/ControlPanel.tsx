@@ -44,6 +44,7 @@ interface ControlPanelProps {
   onCloseMobile?: () => void;
   themeConfig: ThemeConfig;
   dailyInspiration: Inspiration;
+  mode?: 'sidebar' | 'inline';
   
   // Spotify Integration Props
   spotifyToken: string | null;
@@ -69,6 +70,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   spotifyToken,
   onSpotifyConnect,
   onSpotifyDisconnect,
+  mode = 'sidebar',
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -163,8 +165,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   };
 
   return (
-    <div className={`w-full h-full text-text-muted p-6 border-l flex flex-col justify-between overflow-y-auto select-none backdrop-blur-md transition-colors duration-500
-      ${themeConfig.panelClass}
+    <div className={`w-full h-full text-text-muted p-6 flex flex-col justify-between overflow-y-auto select-none transition-colors duration-500
+      ${mode === 'inline' 
+        ? 'border-0 bg-transparent' 
+        : `border-l backdrop-blur-md ${themeConfig.panelClass}`
+      }
     `}>
       
       {/* Panel Header */}

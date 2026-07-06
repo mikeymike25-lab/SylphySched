@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { getMessaging, isSupported } from 'firebase/messaging';
 
 // Capture configurations from Vite environment variables (defined in .env)
 const firebaseConfig = {
@@ -33,5 +34,16 @@ export const facebookProvider = new FacebookAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
+
+// Export messaging asynchronously to prevent build-time or browser support crashes
+export const getFirebaseMessaging = async () => {
+  try {
+    const supported = await isSupported();
+    return supported ? getMessaging(app) : null;
+  } catch (err) {
+    console.warn('Firebase Messaging is not supported in this browser:', err);
+    return null;
+  }
+};
 
 

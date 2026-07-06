@@ -1,0 +1,27 @@
+name: Send Push Notifications
+
+on:
+  schedule:
+    # Run every 5 minutes to check for upcoming classes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allows manual triggers from the GitHub Actions dashboard
+
+jobs:
+  send-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install firebase-admin
+
+      - name: Run Push Dispatcher Script
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scratch/fcm_sender.js

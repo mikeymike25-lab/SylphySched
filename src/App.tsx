@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { AscendingTimeline, timeToMinutes } from './components/AscendingTimeline';
 import { ControlPanel } from './components/ControlPanel';
 import { ToastNotification } from './components/ToastNotification';
@@ -17,9 +17,10 @@ import { useWeather } from './hooks/useWeather';
 import { WeatherWidget } from './components/WeatherWidget';
 
 // Firebase Client SDK Modules
-import { auth, db } from './utils/firebase';
+import { auth, db, getFirebaseMessaging } from './utils/firebase';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getToken } from 'firebase/messaging';
 
 // Web Audio API Synthesizer Tone Generator (CORS-free custom sound effects)
 const playNotificationSound = (type: 'start' | 'end' | 'system') => {
@@ -226,8 +227,8 @@ function App() {
   const [theme, setTheme] = useState<ThemeName>('dark');
   const themeConfig = useMemo(() => THEME_CONFIGS[theme], [theme]);
 
-  // View state: timeline or vault
-  const [view, setView] = useState<'timeline' | 'vault'>('timeline');
+  // View state: timeline or vault or chat or control
+  const [view, setView] = useState<'timeline' | 'vault' | 'chat' | 'control'>('timeline');
 
   // Firebase User & Settings Drawer states
   const [user, setUser] = useState<any>(null);
@@ -376,18 +377,29 @@ function App() {
   // Toast notifications state
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Mobile Drawer Toggle state
-  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
+  // Desktop resize recovery listener: redirects 'chat' or 'control' to 'timeline' if screen becomes desktop size
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        if (view === 'chat' || view === 'control') {
+          setView('timeline');
+        }
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, [view]);
 
   // Browser HTML5 Notification Permission state
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
 
-  // In-app notifications enabled status (default is true - ON as standard)
+  // In-app notifications enabled status (default is false - OFF by default on first login/signup)
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('sylphy_notifications_enabled');
-    return saved !== null ? saved === 'true' : true;
+    return saved !== null ? saved === 'true' : false;
   });
 
   const handleToggleNotifications = () => {
@@ -414,6 +426,41 @@ function App() {
       console.error('Failed to sync to Firestore:', e);
     }
   };
+
+  // Sync FCM Push Token to Firestore when user logs in and grants permission
+  useEffect(() => {
+    if (!user) return;
+
+    const syncFcmToken = async () => {
+      try {
+        const messaging = await getFirebaseMessaging();
+        if (!messaging) return;
+
+        if (permission === 'granted') {
+          const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+          if (!vapidKey) {
+            console.warn('VITE_FIREBASE_VAPID_KEY is not defined in .env. Please generate a Web Push VAPID key in the Firebase Console under Cloud Messaging settings.');
+            return;
+          }
+
+          const token = await getToken(messaging, { vapidKey });
+          if (token) {
+            const tokenDocRef = doc(db, 'users', user.uid, 'tokens', token);
+            await setDoc(tokenDocRef, {
+              token,
+              deviceType: /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
+              updatedAt: new Date(),
+            });
+            console.log('FCM Token registered and synced to Firestore:', token);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to retrieve or sync FCM token:', err);
+      }
+    };
+
+    syncFcmToken();
+  }, [user, permission]);
 
   // Firebase Auth and Firestore Snapshot Live Sync
   useEffect(() => {
@@ -540,11 +587,40 @@ function App() {
     return schedule[activeDay] || [];
   }, [schedule, activeDay]);
 
+  // Helper to trigger HTML5 Browser Push Notifications (with Service Worker fallback for iOS/Android phones)
+  const sendPushNotification = useCallback((title: string, body: string, requireInteraction = false) => {
+    if (permission !== 'granted' || !notificationsEnabled) return;
+    try {
+      const options: NotificationOptions = {
+        body,
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
+        requireInteraction,
+      };
+      
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification(title, options);
+        }).catch(() => {
+          new Notification(title, options);
+        });
+      } else {
+        new Notification(title, options);
+      }
+    } catch (err) {
+      console.warn('Failed to send HTML5 push notification:', err);
+    }
+  }, [permission, notificationsEnabled]);
+
   // Request browser notification permission
   const handleRequestPermission = () => {
     if (typeof Notification === 'undefined') return;
     Notification.requestPermission().then((res) => {
       setPermission(res);
+      if (res === 'granted') {
+        setNotificationsEnabled(true);
+        localStorage.setItem('sylphy_notifications_enabled', 'true');
+      }
     });
   };
 
@@ -616,17 +692,7 @@ function App() {
     }
 
     // HTML5 browser notification (pops up if permitted)
-    if (permission === 'granted' && notificationsEnabled) {
-      try {
-        new Notification(title, {
-          body: message,
-          tag: newToast.id,
-          requireInteraction: false,
-        });
-      } catch (err) {
-        console.warn('HTML5 Notification execution failed:', err);
-      }
-    }
+    sendPushNotification(title, message);
   };
 
   const handleRemoveToast = (id: string) => {
@@ -739,16 +805,11 @@ function App() {
       );
 
       // Dispatch browser push notification
-      if (permission === 'granted' && notificationsEnabled) {
-        try {
-          new Notification("New Inspiration & Quote", {
-            body: `Verse: "${dailyInspiration.verse}" (${dailyInspiration.verseReference})\n\nQuote: "${dailyInspiration.quote}" (${dailyInspiration.quoteAuthor})`,
-            requireInteraction: true,
-          });
-        } catch (err) {
-          console.warn('HTML5 push notification for inspiration failed:', err);
-        }
-      }
+      sendPushNotification(
+        "New Inspiration & Quote",
+        `Verse: "${dailyInspiration.verse}" (${dailyInspiration.verseReference})\n\nQuote: "${dailyInspiration.quote}" (${dailyInspiration.quoteAuthor})`,
+        true
+      );
     }
 
     // Case 0.5: Task Deadline Notifications (1d, 12h, 6h, 1h before)
@@ -769,16 +830,11 @@ function App() {
           );
 
           // Push
-          if (permission === 'granted' && notificationsEnabled) {
-            try {
-              new Notification("Task Deadline Approaching", {
-                body: `"${note.title}" is due in ${timeLabel}.\nSubject: ${getSubjectNameByScheduleId(note.schedule_id)}`,
-                requireInteraction: true,
-              });
-            } catch (e) {
-              console.warn('Deadline HTML5 notification failed:', e);
-            }
-          }
+          sendPushNotification(
+            "Task Deadline Approaching",
+            `"${note.title}" is due in ${timeLabel}.\nSubject: ${getSubjectNameByScheduleId(note.schedule_id)}`,
+            true
+          );
 
           // Save list
           setNotes((prev) => {
@@ -839,17 +895,11 @@ function App() {
           activeEvent.subject_name
         );
 
-        // CHRONO-NOTIFICATIONS: Desktop push notification
-        if (permission === 'granted' && notificationsEnabled) {
-          try {
-            new Notification(`Focus Block Started: ${activeEvent.subject_name}`, {
-              body: `Room: ${activeEvent.room || 'TBD'} • Instructor: ${activeEvent.instructor || 'TBD'}`,
-              requireInteraction: false,
-            });
-          } catch (err) {
-            console.warn('HTML5 push notification failed:', err);
-          }
-        }
+        // CHRONO-NOTIFICATIONS: Desktop/Mobile push notification
+        sendPushNotification(
+          `Focus Block Started: ${activeEvent.subject_name}`,
+          `Room: ${activeEvent.room || 'TBD'} • Instructor: ${activeEvent.instructor || 'TBD'}`
+        );
       }
     }
 
@@ -1050,9 +1100,19 @@ function App() {
         <div className={`w-full bg-white/[0.02] backdrop-blur-md border-b px-3 md:px-6 py-3 flex items-center justify-between gap-2 md:gap-4 transition-colors duration-500 ${themeConfig.borderClass}`}>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
             <div className={`flex items-center gap-1.5 md:gap-2 font-mono text-xs font-bold tracking-widest uppercase transition-colors duration-500 ${themeConfig.accentTextClass}`}>
-              <Calendar className="w-4 h-4 shrink-0" />
+              <span className="shrink-0">
+                {view === 'timeline' && <Calendar className="w-4 h-4" />}
+                {view === 'vault' && <ClipboardList className="w-4 h-4" />}
+                {view === 'chat' && <MessageSquare className="w-4 h-4" />}
+                {view === 'control' && <SlidersHorizontal className="w-4 h-4" />}
+              </span>
               <span className="hidden lg:inline">SylphySched Weekly</span>
-              <span className="hidden min-[400px]:inline lg:hidden">Sylphy</span>
+              <span className="lg:hidden">
+                {view === 'timeline' && 'Sylphy'}
+                {view === 'vault' && 'Notes'}
+                {view === 'chat' && 'Sylphy Chat'}
+                {view === 'control' && 'Control'}
+              </span>
             </div>
             {/* View Toggle */}
             <div className={`hidden lg:flex bg-matte-black/40 border rounded-full p-0.5 transition-colors duration-500 ${themeConfig.borderClass} shrink-0`}>
@@ -1085,32 +1145,34 @@ function App() {
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
-            <div className="hidden sm:block lg:hidden shrink-0">
+            <div className="lg:hidden shrink-0">
               <WeatherWidget weather={weather} themeConfig={themeConfig} />
             </div>
 
             {/* Add Class Button */}
-            <button
-              onClick={() => {
-                setAddScheduleDefaultTab('manual');
-                setIsAddScheduleOpen(true);
-              }}
-              className={`hidden md:flex items-center justify-center p-1.5 border rounded-full hover:opacity-95 transition-all duration-300 cursor-pointer shadow-sm shrink-0
-                ${themeConfig.name === 'dark' 
-                  ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-cyber-cyan' 
-                  : 'bg-slate-900 text-white border-slate-900/10 hover:bg-slate-800'
-                }
-              `}
-              title="Add Class Schedule"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
+            {view === 'timeline' && (
+              <button
+                onClick={() => {
+                  setAddScheduleDefaultTab('manual');
+                  setIsAddScheduleOpen(true);
+                }}
+                className={`hidden md:flex items-center justify-center p-1.5 border rounded-full hover:opacity-95 transition-all duration-300 cursor-pointer shadow-sm shrink-0
+                  ${themeConfig.name === 'dark' 
+                    ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-cyber-cyan' 
+                    : 'bg-slate-900 text-white border-slate-900/10 hover:bg-slate-800'
+                  }
+                `}
+                title="Add Class Schedule"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            )}
 
 
 
             {/* Mobile-only diagnostics header button */}
             <button
-              onClick={() => setIsMobileDrawerOpen(true)}
+              onClick={() => setView('control')}
               className={`lg:hidden flex items-center justify-center p-1.5 bg-white/[0.04] border rounded-full hover:bg-white/[0.08] transition-colors cursor-pointer shrink-0 ${themeConfig.borderClass} ${themeConfig.textMutedClass}`}
               title="Open Diagnostics"
             >
@@ -1175,8 +1237,8 @@ function App() {
         )}
 
         {/* Timeline or Vault block area */}
-        <div className="flex-1 overflow-hidden relative">
-          {view === 'timeline' ? (
+        <div className="flex-1 overflow-hidden relative pb-24 lg:pb-0">
+          {view === 'timeline' && (
             <AscendingTimeline
               scheduleItems={activeDaySchedule}
               currentTime={currentTime}
@@ -1184,7 +1246,8 @@ function App() {
               onBlockClick={handleBlockClick}
               userName={user?.displayName}
             />
-          ) : (
+          )}
+          {view === 'vault' && (
             <NoteVault
               notes={notes}
               schedule={schedule}
@@ -1193,6 +1256,35 @@ function App() {
               onSaveNote={handleSaveNote}
               themeConfig={themeConfig}
               currentTime={currentTime}
+            />
+          )}
+          {view === 'chat' && (
+            <SylphyChat
+              schedule={schedule}
+              userName={user?.displayName}
+              themeConfig={themeConfig}
+              mode="inline"
+            />
+          )}
+          {view === 'control' && (
+            <ControlPanel
+              currentTime={currentTime}
+              scheduleItems={activeDaySchedule}
+              isSimulating={isSimulating}
+              setIsSimulating={setIsSimulating}
+              simSpeed={simSpeed}
+              setSimSpeed={setSimSpeed}
+              onResetTime={handleResetTime}
+              onTimeOffsetChange={setTimeOffset}
+              timeOffset={timeOffset}
+              notificationPermission={permission}
+              notificationsEnabled={notificationsEnabled}
+              themeConfig={themeConfig}
+              dailyInspiration={dailyInspiration}
+              spotifyToken={spotifyToken}
+              onSpotifyConnect={setSpotifyToken}
+              onSpotifyDisconnect={handleSpotifyDisconnect}
+              mode="inline"
             />
           )}
         </div>
@@ -1227,55 +1319,6 @@ function App() {
         />
       </motion.div>
 
-
-
-      {/* MOBILE DRAWER: Slides from right, with blur backdrop */}
-      <AnimatePresence>
-        {isMobileDrawerOpen && (
-          <>
-            {/* Backdrop overlay */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsMobileDrawerOpen(false)}
-              className="lg:hidden fixed inset-0 z-40 bg-matte-black/60 backdrop-blur-sm pointer-events-auto"
-            />
-
-            {/* Sliding ControlPanel in Frosted Glass */}
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 120, damping: 18 }}
-              className={`lg:hidden fixed inset-y-0 right-0 z-45 w-[85%] sm:w-[60%] h-full backdrop-blur-2xl border-l shadow-[0_0_50px_rgba(0,0,0,0.8)] pointer-events-auto transition-colors duration-500
-                ${theme === 'dark' ? 'bg-[#0f0f11]/70 border-white/10' : 'bg-white/80 border-slate-900/10'}
-              `}
-            >
-              <ControlPanel
-                currentTime={currentTime}
-                scheduleItems={activeDaySchedule}
-                isSimulating={isSimulating}
-                setIsSimulating={setIsSimulating}
-                simSpeed={simSpeed}
-                setSimSpeed={setSimSpeed}
-                onResetTime={handleResetTime}
-                onTimeOffsetChange={setTimeOffset}
-                timeOffset={timeOffset}
-                notificationPermission={permission}
-                notificationsEnabled={notificationsEnabled}
-                onCloseMobile={() => setIsMobileDrawerOpen(false)}
-                themeConfig={themeConfig}
-                dailyInspiration={dailyInspiration}
-                spotifyToken={spotifyToken}
-                onSpotifyConnect={setSpotifyToken}
-                onSpotifyDisconnect={handleSpotifyDisconnect}
-              />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
       {/* Add Class Importer Modal */}
       <AddScheduleModal
         isOpen={isAddScheduleOpen}
@@ -1297,14 +1340,17 @@ function App() {
         userName={user?.displayName}
       />
 
-      {/* Sylphy AI Chatbot Assistant */}
-      <SylphyChat
-        schedule={schedule}
-        userName={user?.displayName}
-        themeConfig={themeConfig}
-        isOpen={isChatOpen}
-        onToggleOpen={() => setIsChatOpen((prev) => !prev)}
-      />
+      {/* Sylphy AI Chatbot Assistant (Desktop Floating) */}
+      <div className="hidden lg:block">
+        <SylphyChat
+          schedule={schedule}
+          userName={user?.displayName}
+          themeConfig={themeConfig}
+          isOpen={isChatOpen}
+          onToggleOpen={() => setIsChatOpen((prev) => !prev)}
+          mode="floating"
+        />
+      </div>
 
       {/* MOBILE FLOATING DOCK (TikTok-style centered navigation) */}
       <div className={`lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-4 px-5 py-2 rounded-full border backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_12px_40px_rgba(0,0,0,0.5)] transition-all duration-500
@@ -1341,25 +1387,11 @@ function App() {
           <ClipboardList className="w-5 h-5" />
         </button>
 
-        {/* Tab 3: Quick Add Class */}
+        {/* Tab 3: Chatbot trigger */}
         <button
-          onClick={() => {
-            setAddScheduleDefaultTab('manual');
-            setIsAddScheduleOpen(true);
-          }}
+          onClick={() => setView('chat')}
           className={`p-2 rounded-full cursor-pointer transition-all duration-300 active:scale-90 flex items-center justify-center
-            ${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.01]
-          `}
-          title="Add Class Schedule"
-        >
-          <Plus className="w-5 h-5" />
-        </button>
-
-        {/* Tab 4: Chatbot trigger */}
-        <button
-          onClick={() => setIsChatOpen((prev) => !prev)}
-          className={`p-2 rounded-full cursor-pointer transition-all duration-300 active:scale-90 flex items-center justify-center
-            ${isChatOpen 
+            ${view === 'chat' 
               ? 'text-cyan-400 bg-white/[0.04] shadow-[0_0_12px_rgba(6,182,212,0.15)] border border-white/5' 
               : `${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.01]`
             }
@@ -1369,11 +1401,11 @@ function App() {
           <MessageSquare className="w-5 h-5" />
         </button>
 
-        {/* Tab 5: Diagnostics Panel trigger */}
+        {/* Tab 4: Diagnostics Panel trigger */}
         <button
-          onClick={() => setIsMobileDrawerOpen(true)}
+          onClick={() => setView('control')}
           className={`p-2 rounded-full cursor-pointer transition-all duration-300 active:scale-90 flex items-center justify-center
-            ${isMobileDrawerOpen 
+            ${view === 'control' 
               ? 'text-cyan-400 bg-white/[0.04] shadow-[0_0_12px_rgba(6,182,212,0.15)] border border-white/5' 
               : `${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.01]`
             }
@@ -1383,6 +1415,25 @@ function App() {
           <SlidersHorizontal className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Floating Action Button for Adding Class Schedule on Mobile */}
+      {view === 'timeline' && (
+        <button
+          onClick={() => {
+            setAddScheduleDefaultTab('manual');
+            setIsAddScheduleOpen(true);
+          }}
+          className={`lg:hidden fixed bottom-24 right-6 z-30 w-12 h-12 rounded-full border shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer
+            ${theme === 'dark' 
+              ? 'bg-[#0c0c0e]/90 border-white/10 text-cyber-cyan shadow-[0_8px_30px_rgba(0,229,255,0.2)]' 
+              : 'bg-white border-slate-900/10 text-slate-900 hover:bg-slate-50'
+            }
+          `}
+          title="Add Class Schedule"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      )}
 
     </div>
   );

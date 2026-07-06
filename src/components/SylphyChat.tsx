@@ -16,6 +16,7 @@ interface SylphyChatProps {
   themeConfig: ThemeConfig;
   isOpen?: boolean;
   onToggleOpen?: () => void;
+  mode?: 'floating' | 'inline';
 }
 
 export const SylphyChat: React.FC<SylphyChatProps> = ({
@@ -24,11 +25,33 @@ export const SylphyChat: React.FC<SylphyChatProps> = ({
   themeConfig,
   isOpen: parentIsOpen,
   onToggleOpen,
+  mode = 'floating',
 }) => {
   const [localIsOpen, setLocalIsOpen] = useState(false);
   const isOpen = parentIsOpen !== undefined ? parentIsOpen : localIsOpen;
   const toggleOpen = onToggleOpen !== undefined ? onToggleOpen : () => setLocalIsOpen(prev => !prev);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('sylphy_chat_messages');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        }));
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+  
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem('sylphy_chat_messages', JSON.stringify(messages));
+    }
+  }, [messages]);
+
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -161,6 +184,115 @@ Keep your answers concise, clear, and focused on helping the student. Answer que
       setIsLoading(false);
     }
   };
+
+  if (mode === 'inline') {
+    return (
+      <div className="w-full h-full flex flex-col justify-between p-4 md:p-6 transition-colors duration-500 bg-transparent select-none">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b pb-3 border-white/5">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 flex items-center justify-center text-white relative">
+              <Sparkles className="w-4 h-4 animate-pulse" />
+            </div>
+            <div>
+              <h3 className={`text-xs font-bold uppercase tracking-wider ${themeConfig.textBrightClass}`}>
+                Sylphy Assistant
+              </h3>
+              <span className={`text-[8px] font-mono ${themeConfig.textDarkClass}`}>
+                {hasApiKey ? 'Online (Gemini AI)' : 'Offline Helper'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Warning Message if No API Key */}
+        {!hasApiKey && (
+          <div className="mt-2 p-2 border border-amber-500/10 bg-amber-500/5 rounded-xl flex items-start gap-1.5 shrink-0">
+            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <span className="text-[8px] font-mono text-amber-400 leading-normal">
+              VITE_GEMINI_API_KEY is not set. Sylphy is running in offline guide mode. Add a key to unlock intelligent AI chat.
+            </span>
+          </div>
+        )}
+
+        {/* Chat History Panel */}
+        <div className="flex-1 overflow-y-auto scrollbar-none my-4 pr-1 flex flex-col gap-3">
+          {messages.map((m) => {
+            const isSylphy = m.sender === 'sylphy';
+            return (
+              <div
+                key={m.id}
+                className={`flex items-start gap-2 max-w-[85%]
+                  ${isSylphy ? 'self-start' : 'self-end flex-row-reverse'}
+                `}
+              >
+                {isSylphy ? (
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 flex items-center justify-center text-white shrink-0 mt-0.5">
+                    <Sparkles className="w-2.5 h-2.5" />
+                  </div>
+                ) : (
+                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${themeConfig.borderClass}`}>
+                    <User className="w-2.5 h-2.5 text-slate-400" />
+                  </div>
+                )}
+
+                <div className={`px-3 py-2 rounded-[18px] text-[11px] leading-relaxed font-sans select-text
+                  ${isSylphy
+                    ? themeConfig.name === 'dark' 
+                      ? 'bg-white/[0.03] border border-white/5 text-slate-200' 
+                      : 'bg-slate-100 border border-slate-200/50 text-slate-800'
+                    : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-medium'
+                  }
+                `}>
+                  {renderFormattedText(m.text)}
+                </div>
+              </div>
+            );
+          })}
+          {isLoading && (
+            <div className="flex items-center gap-2 self-start max-w-[85%]">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 flex items-center justify-center text-white shrink-0">
+                <Sparkles className="w-2.5 h-2.5" />
+              </div>
+              <div className={`px-3 py-2 rounded-[18px] text-[11px] backdrop-blur-md flex items-center gap-1.5 ${themeConfig.name === 'dark' ? 'bg-white/[0.03] text-slate-400' : 'bg-slate-100 text-slate-600'}`}>
+                <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
+                <span>Sylphy is thinking...</span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Bar */}
+        <form onSubmit={handleSendMessage} className="flex gap-2 items-center pt-2 border-t border-white/5 shrink-0">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder="Ask Sylphy something..."
+            className={`flex-1 px-4 py-2.5 rounded-full text-xs font-sans border outline-none
+              ${themeConfig.name === 'dark'
+                ? 'bg-matte-black border-white/10 text-white placeholder-white/20 focus:border-cyan-500/50'
+                : 'bg-white border-slate-900/10 text-slate-900 placeholder-slate-400 focus:border-slate-900/30'
+              }
+            `}
+          />
+          <button
+            type="submit"
+            disabled={!inputText.trim()}
+            className={`p-2.5 rounded-full flex items-center justify-center cursor-pointer transition-all duration-300 shrink-0
+              ${!inputText.trim()
+                ? 'opacity-40 bg-white/5 text-slate-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:from-cyan-400 hover:to-blue-400 shadow-md'
+              }
+            `}
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <>
