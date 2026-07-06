@@ -242,6 +242,13 @@ const formatThresholdTimeLabel = (key: string): string => {
   return `${value}`;
 };
 
+const cleanSubjectName = (name: string): string => {
+  return name
+    .replace(/\s*-\s*Lab$/i, '')
+    .replace(/\s+Lab$/i, '')
+    .trim();
+};
+
 function App() {
   // Theme state
   const [theme, setTheme] = useState<ThemeName>('dark');
@@ -807,7 +814,7 @@ function App() {
   const getSubjectNameByScheduleId = (scheduleId: string): string => {
     for (const day of Object.values(schedule)) {
       const item = day.find((i) => i.id === scheduleId);
-      if (item) return item.subject_name;
+      if (item) return cleanSubjectName(item.subject_name);
     }
     return 'General Task';
   };

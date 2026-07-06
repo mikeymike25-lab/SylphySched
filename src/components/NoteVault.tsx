@@ -32,37 +32,43 @@ export const NoteVault: React.FC<NoteVaultProps> = ({
   const [modalSubject, setModalSubject] = useState('GENERAL');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
-  // Extract unique subject names from the schedule to populate filter/selection options
+  // Strip " - Lab" or " Lab" suffix to unify course subject names
+  const cleanSubjectName = (name: string): string =>
+    name.replace(/\s*-\s*Lab$/i, '').replace(/\s+Lab$/i, '').trim();
+
+  // Extract unique CLEANED subject names from the schedule to populate filter/selection options
   const uniqueSubjects = useMemo(() => {
     const subjects = new Set<string>();
     for (const dayItems of Object.values(schedule)) {
       for (const item of dayItems) {
-        subjects.add(item.subject_name);
+        subjects.add(cleanSubjectName(item.subject_name));
       }
     }
     return Array.from(subjects).sort();
   }, [schedule]);
 
-  // Helper to map subject name to its class schedule ID
+  // Build deduplicated subject options: one entry per unique cleaned name
   const subjectOptions = useMemo(() => {
     const options: { id: string; name: string }[] = [];
     const seen = new Set<string>();
     for (const dayItems of Object.values(schedule)) {
       for (const item of dayItems) {
-        if (!seen.has(item.subject_name)) {
-          seen.add(item.subject_name);
-          options.push({ id: item.id, name: item.subject_name });
+        const cleaned = cleanSubjectName(item.subject_name);
+        if (!seen.has(cleaned)) {
+          seen.add(cleaned);
+          // Use the lecture item's id (non-lab) when possible, else use whatever comes first
+          options.push({ id: item.id, name: cleaned });
         }
       }
     }
     return options.sort((a, b) => a.name.localeCompare(b.name));
   }, [schedule]);
 
-  // Map schedule ID to subject name helper
+  // Map schedule ID to cleaned subject name helper
   const getSubjectName = (scheduleId: string): string => {
     for (const dayItems of Object.values(schedule)) {
       const match = dayItems.find((item) => item.id === scheduleId);
-      if (match) return match.subject_name;
+      if (match) return cleanSubjectName(match.subject_name);
     }
     return 'General Note';
   };
