@@ -10,6 +10,7 @@ import { SettingsDrawer } from './components/SettingsDrawer';
 import { AddScheduleModal } from './components/AddScheduleModal';
 import { WelcomeModal } from './components/WelcomeModal';
 import { SylphyChat } from './components/SylphyChat';
+import { NotificationPermissionModal } from './components/NotificationPermissionModal';
 import type { ScheduleItem, ToastMessage, ThemeName, ThemeConfig, Note } from './types';
 import { Calendar, SlidersHorizontal, Loader2, User, Plus, MessageSquare, ClipboardList } from 'lucide-react';
 import { getDailyInspiration } from './utils/inspiration';
@@ -279,6 +280,7 @@ function App() {
   const [addScheduleDefaultTab, setAddScheduleDefaultTab] = useState<'manual' | 'import'>('manual');
   const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [isPermissionModalOpen, setIsPermissionModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -426,6 +428,16 @@ function App() {
       console.error('Failed to sync to Firestore:', e);
     }
   };
+
+  // Open Soft Notification Permission Modal after onboarding or login if permissions are default
+  useEffect(() => {
+    if (user && !authLoading && !isWelcomeModalOpen && permission === 'default') {
+      const dismissed = localStorage.getItem('sylphy_notification_modal_dismissed');
+      if (dismissed !== 'true') {
+        setIsPermissionModalOpen(true);
+      }
+    }
+  }, [user, authLoading, isWelcomeModalOpen, permission]);
 
   // Sync FCM Push Token to Firestore when user logs in and grants permission
   useEffect(() => {
@@ -1338,6 +1350,20 @@ function App() {
         onSkip={handleSkipOnboarding}
         themeConfig={themeConfig}
         userName={user?.displayName}
+      />
+
+      {/* Soft Notification Permission Modal */}
+      <NotificationPermissionModal
+        isOpen={isPermissionModalOpen}
+        onClose={() => {
+          localStorage.setItem('sylphy_notification_modal_dismissed', 'true');
+          setIsPermissionModalOpen(false);
+        }}
+        onConfirm={() => {
+          handleRequestPermission();
+          setIsPermissionModalOpen(false);
+        }}
+        themeConfig={themeConfig}
       />
 
       {/* Sylphy AI Chatbot Assistant (Desktop Floating) */}
