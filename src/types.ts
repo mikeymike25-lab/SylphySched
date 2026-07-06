@@ -17,7 +17,7 @@ export interface Note {
   content: string;
   deadline?: string;
   is_done?: boolean;
-  notified_thresholds?: ('1d' | '12h' | '6h' | '1h')[];
+  notified_thresholds?: string[];
 }
 
 export interface TimelineBlock {

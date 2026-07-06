@@ -10,7 +10,7 @@ interface WeatherWidgetProps {
 }
 
 export const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weather, themeConfig }) => {
-  const { temp, condition, description, isSimulated } = weather;
+  const { temp, condition, description, isSimulated, locationName } = weather;
 
   // Icon selection
   const WeatherIcon = () => {
@@ -64,7 +64,7 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weather, themeConf
           : 'bg-slate-900/[0.03] border-slate-900/10 shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.7),0_4px_12px_rgba(0,0,0,0.02)] text-slate-700'
         }
       `}
-      title={`${description} in Antipolo${isSimulated ? ' (Simulated)' : ' (Live)'}`}
+      title={`${description} in ${locationName}${isSimulated ? ' (Simulated)' : ' (Live)'}`}
     >
       {/* Icon */}
       <WeatherIcon />
@@ -97,7 +97,7 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({ weather, themeConf
       {/* Location */}
       <div className="hidden md:flex items-center gap-0.5 opacity-80 shrink-0">
         <MapPin className="w-2.5 h-2.5 opacity-60" />
-        <span className="text-[9px] uppercase tracking-wider font-semibold">Antipolo</span>
+        <span className="text-[9px] uppercase tracking-wider font-semibold">{locationName}</span>
       </div>
     </motion.div>
   );

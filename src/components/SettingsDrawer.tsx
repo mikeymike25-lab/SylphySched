@@ -60,18 +60,8 @@ interface SettingsDrawerProps {
   setSoundEnabled: (enabled: boolean) => void;
   
   // Alarm Thresholds
-  deadlineSettings: {
-    '1d': boolean;
-    '12h': boolean;
-    '6h': boolean;
-    '1h': boolean;
-  };
-  setDeadlineSettings: React.Dispatch<React.SetStateAction<{
-    '1d': boolean;
-    '12h': boolean;
-    '6h': boolean;
-    '1h': boolean;
-  }>>;
+  deadlineSettings: Record<string, boolean>;
+  setDeadlineSettings: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onUpdateProfile: (displayName: string, photoURL: string) => Promise<void>;
 }
 
@@ -165,9 +155,68 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     }
   };
 
-  const handleDeadlineToggle = (key: '1d' | '12h' | '6h' | '1h') => {
+  const handleDeadlineToggle = (key: string) => {
     setDeadlineSettings(prev => {
       const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('sylphy_deadline_settings', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Helper to parse key to MS for sorting
+  const parseThresholdToMs = (key: string): number => {
+    const value = parseInt(key.slice(0, -1), 10);
+    const unit = key.slice(-1);
+    if (unit === 'm') return value * 60 * 1000;
+    if (unit === 'h') return value * 60 * 60 * 1000;
+    if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+    return 0;
+  };
+
+  // Helper to format threshold keys to readable labels
+  const formatThresholdLabel = (key: string): string => {
+    const value = parseInt(key.slice(0, -1), 10);
+    const unit = key.slice(-1);
+    const labelUnit = unit === 'm' ? 'Minute' : unit === 'h' ? 'Hour' : 'Day';
+    return `${value} ${labelUnit}${value > 1 ? 's' : ''} Before`;
+  };
+
+  // State for new custom threshold form
+  const [newValue, setNewValue] = useState<number>(15);
+  const [newUnit, setNewUnit] = useState<'m' | 'h' | 'd'>('m');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const handleAddThreshold = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddError(null);
+
+    if (isNaN(newValue) || newValue <= 0) {
+      setAddError('Please enter a positive number.');
+      return;
+    }
+
+    const key = `${newValue}${newUnit}`;
+
+    if (deadlineSettings[key] !== undefined) {
+      setAddError('This reminder interval already exists.');
+      return;
+    }
+
+    setDeadlineSettings(prev => {
+      const next = { ...prev, [key]: true };
+      localStorage.setItem('sylphy_deadline_settings', JSON.stringify(next));
+      return next;
+    });
+
+    // Reset inputs
+    setNewValue(15);
+    setNewUnit('m');
+  };
+
+  const handleDeleteThreshold = (key: string) => {
+    setDeadlineSettings(prev => {
+      const next = { ...prev };
+      delete next[key];
       localStorage.setItem('sylphy_deadline_settings', JSON.stringify(next));
       return next;
     });
@@ -455,21 +504,82 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                   </p>
 
                   <div className="flex flex-col gap-3">
-                    {([
-                      { key: '1d', label: '1 Day Before' },
-                      { key: '12h', label: '12 Hours Before' },
-                      { key: '6h', label: '6 Hours Before' },
-                      { key: '1h', label: '1 Hour Before' }
-                    ] as const).map(({ key, label }) => (
-                      <div key={key} className="flex items-center justify-between">
-                        <span className={`text-[11.5px] font-bold ${themeConfig.textBrightClass}`}>{label}</span>
-                        <LiquidGlassSwitch
-                          checked={deadlineSettings[key]}
-                          onChange={() => handleDeadlineToggle(key)}
-                        />
-                      </div>
-                    ))}
+                    {Object.keys(deadlineSettings)
+                      .sort((a, b) => parseThresholdToMs(a) - parseThresholdToMs(b))
+                      .map((key) => (
+                        <div key={key} className="flex items-center justify-between gap-2.5 group/threshold">
+                          <div className="flex items-center gap-2">
+                            {/* Delete custom threshold button (only allow if there is more than 1 threshold left, to prevent empty list) */}
+                            {Object.keys(deadlineSettings).length > 1 && (
+                              <button
+                                onClick={() => handleDeleteThreshold(key)}
+                                className="opacity-40 hover:opacity-100 group-hover/threshold:opacity-100 p-1 rounded-md text-rose-500 hover:bg-rose-500/10 transition-all cursor-pointer"
+                                title="Remove reminder threshold"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                            <span className={`text-[11.5px] font-bold ${themeConfig.textBrightClass}`}>
+                              {formatThresholdLabel(key)}
+                            </span>
+                          </div>
+                          <LiquidGlassSwitch
+                            checked={deadlineSettings[key]}
+                            onChange={() => handleDeadlineToggle(key)}
+                          />
+                        </div>
+                      ))}
                   </div>
+
+                  {/* Add New Custom Threshold Form */}
+                  <form onSubmit={handleAddThreshold} className="mt-3.5 pt-3.5 border-t border-white/5 flex flex-col gap-2">
+                    <span className={`text-[9px] font-mono tracking-wider opacity-60 uppercase ${themeConfig.textDarkClass}`}>
+                      Add Custom Alert Time
+                    </span>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={newValue}
+                        onChange={(e) => setNewValue(parseInt(e.target.value, 10))}
+                        className={`w-20 px-3 py-1.5 rounded-xl text-xs font-mono border outline-none
+                          ${themeConfig.name === 'dark' 
+                            ? 'bg-white/[0.02] border-white/10 text-white focus:border-cyan-500/40' 
+                            : 'bg-slate-900/[0.02] border-slate-900/10 text-slate-900 focus:border-slate-900/35'
+                          }
+                        `}
+                      />
+                      <select
+                        value={newUnit}
+                        onChange={(e) => setNewUnit(e.target.value as 'm' | 'h' | 'd')}
+                        className={`flex-1 px-2.5 py-1.5 rounded-xl text-xs font-mono border outline-none cursor-pointer
+                          ${themeConfig.name === 'dark' 
+                            ? 'bg-matte-black/90 border-white/10 text-white focus:border-cyan-500/40' 
+                            : 'bg-white border-slate-900/10 text-slate-900 focus:border-slate-900/35'
+                          }
+                        `}
+                      >
+                        <option value="m">Minutes</option>
+                        <option value="h">Hours</option>
+                        <option value="d">Days</option>
+                      </select>
+                      <button
+                        type="submit"
+                        className={`px-4 py-1.5 rounded-xl font-mono text-[10px] tracking-wider transition-all duration-300 cursor-pointer active:scale-[0.98]
+                          ${themeConfig.name === 'dark'
+                            ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/30 shadow-[0_0_8px_rgba(0,229,255,0.1)]'
+                            : 'bg-slate-900 hover:bg-slate-800 text-white'
+                          }
+                        `}
+                      >
+                        ADD
+                      </button>
+                    </div>
+                    {addError && (
+                      <span className="text-[9px] font-mono text-rose-400 mt-0.5">{addError}</span>
+                    )}
+                  </form>
                 </div>
               </div>
 

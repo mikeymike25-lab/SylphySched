@@ -54,6 +54,7 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
   const [rawText, setRawText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [parsedItems, setParsedItems] = useState<(ParsedScheduleItem & { tempId: string })[]>([]);
+  const [parseError, setParseError] = useState<string | null>(null);
   
   // Inline edit state for parsed items preview
   const [editingTempId, setEditingTempId] = useState<string | null>(null);
@@ -105,6 +106,7 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
     }
 
     setIsParsing(true);
+    setParseError(null);
     try {
       let results: ParsedScheduleItem[] = [];
       if (useAi) {
@@ -112,6 +114,10 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
         results = await parseRawScheduleTextWithGemini(rawText, apiKey);
       } else {
         results = parseRawScheduleTextOffline(rawText);
+      }
+
+      if (results.length === 0) {
+        throw new Error('No classes found in the pasted text. Please verify the schedule formatting.');
       }
 
       const resultsWithIds = results.map(item => ({
@@ -123,7 +129,7 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
       addToast('system', 'Extraction Complete', `Found ${results.length} schedule entries.`, 'SYSTEM');
     } catch (e: any) {
       console.error('Extraction failed:', e);
-      addToast('system', 'Parsing Error', e.message || 'Failed to extract schedule items.', 'SYSTEM');
+      setParseError(e.message || 'Failed to extract schedule items. Please check formatting.');
     } finally {
       setIsParsing(false);
     }
@@ -389,6 +395,16 @@ Wednesday: SIA 12:30 - 13:30 Rm Q-5411 TBA`}
                       `}
                     />
                   </div>
+
+                  {parseError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="w-full p-3.5 rounded-[18px] border border-rose-500/20 bg-rose-500/5 text-rose-400 text-left text-[11px] leading-relaxed"
+                    >
+                      {parseError}
+                    </motion.div>
+                  )}
 
                   <div className="flex gap-2">
                     <button

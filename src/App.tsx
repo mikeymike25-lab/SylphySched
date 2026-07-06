@@ -11,6 +11,7 @@ import { AddScheduleModal } from './components/AddScheduleModal';
 import { WelcomeModal } from './components/WelcomeModal';
 import { SylphyChat } from './components/SylphyChat';
 import { NotificationPermissionModal } from './components/NotificationPermissionModal';
+import { LocationPermissionModal } from './components/LocationPermissionModal';
 import type { ScheduleItem, ToastMessage, ThemeName, ThemeConfig, Note } from './types';
 import { Calendar, SlidersHorizontal, Loader2, User, Plus, MessageSquare, ClipboardList } from 'lucide-react';
 import { getDailyInspiration } from './utils/inspiration';
@@ -223,6 +224,24 @@ const WEEKLY_SCHEDULE: Record<string, ScheduleItem[]> = {
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+const parseThresholdToMs = (key: string): number => {
+  const value = parseInt(key.slice(0, -1), 10);
+  const unit = key.slice(-1);
+  if (unit === 'm') return value * 60 * 1000;
+  if (unit === 'h') return value * 60 * 60 * 1000;
+  if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+  return 0;
+};
+
+const formatThresholdTimeLabel = (key: string): string => {
+  const value = parseInt(key.slice(0, -1), 10);
+  const unit = key.slice(-1);
+  if (unit === 'm') return `${value} minute${value > 1 ? 's' : ''}`;
+  if (unit === 'h') return `${value} hour${value > 1 ? 's' : ''}`;
+  if (unit === 'd') return `${value} day${value > 1 ? 's' : ''}`;
+  return `${value}`;
+};
+
 function App() {
   // Theme state
   const [theme, setTheme] = useState<ThemeName>('dark');
@@ -244,12 +263,7 @@ function App() {
   });
 
   // Alarm threshold configurations state
-  const [deadlineSettings, setDeadlineSettings] = useState<{
-    '1d': boolean;
-    '12h': boolean;
-    '6h': boolean;
-    '1h': boolean;
-  }>(() => {
+  const [deadlineSettings, setDeadlineSettings] = useState<Record<string, boolean>>(() => {
     const saved = localStorage.getItem('sylphy_deadline_settings');
     return saved
       ? JSON.parse(saved)
@@ -282,6 +296,7 @@ function App() {
   const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState<boolean>(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -440,6 +455,17 @@ function App() {
     }
   }, [user, authLoading, isWelcomeModalOpen, permission]);
 
+  // Open Soft Location Permission Modal after notifications modal is settled
+  useEffect(() => {
+    if (user && !authLoading && !isWelcomeModalOpen && !isPermissionModalOpen) {
+      const coordsSaved = localStorage.getItem('sylphy_weather_coords');
+      const dismissed = localStorage.getItem('sylphy_location_modal_dismissed');
+      if (!coordsSaved && dismissed !== 'true') {
+        setIsLocationModalOpen(true);
+      }
+    }
+  }, [user, authLoading, isWelcomeModalOpen, isPermissionModalOpen]);
+
   // Sync FCM Push Token to Firestore when user logs in and grants permission
   useEffect(() => {
     if (!user) return;
@@ -573,13 +599,12 @@ function App() {
       const docRef = doc(db, 'users', auth.currentUser.uid, 'data', 'app');
       try {
         await setDoc(docRef, {
-          schedule: WEEKLY_SCHEDULE,
+          schedule: {},
           notes: {},
         });
-        setSchedule(WEEKLY_SCHEDULE);
-        addToast('system', 'Demo Schedule Loaded', 'Default demo classes loaded.', 'SYSTEM');
+        setSchedule({});
       } catch (err) {
-        console.error('Failed to seed onboarding:', err);
+        console.error('Failed to initialize empty schedule:', err);
       }
     }
   };
@@ -635,6 +660,27 @@ function App() {
         localStorage.setItem('sylphy_notifications_enabled', 'true');
       }
     });
+  };
+
+  // Request browser geolocation permission
+  const handleRequestLocation = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const newCoords = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          };
+          localStorage.setItem('sylphy_weather_coords', JSON.stringify(newCoords));
+          // Dispatch custom event to notify useWeather hook to reload coordinates
+          window.dispatchEvent(new Event('sylphy-request-geolocation'));
+        },
+        (error) => {
+          console.warn('Browser geolocation access rejected:', error);
+        },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+      );
+    }
   };
 
   // Add toast alert handler
@@ -833,7 +879,7 @@ function App() {
         const notified = note.notified_thresholds || [];
 
         // Helper to trigger alert and update note notified list
-        const triggerDeadlineAlert = (thresholdKey: '1d' | '12h' | '6h' | '1h', timeLabel: string) => {
+        const triggerDeadlineAlert = (thresholdKey: string, timeLabel: string) => {
           // Toast
           addToast(
             'system',
@@ -868,14 +914,20 @@ function App() {
 
         // Check difference thresholds (respecting user-configured deadlineSettings)
         if (diffMs > 0) {
-          if (diffMs <= 1 * 60 * 60 * 1000 && !notified.includes('1h') && deadlineSettings['1h']) {
-            triggerDeadlineAlert('1h', 'less than 1 hour');
-          } else if (diffMs <= 6 * 60 * 60 * 1000 && !notified.includes('6h') && diffMs > 1 * 60 * 60 * 1000 && deadlineSettings['6h']) {
-            triggerDeadlineAlert('6h', 'less than 6 hours');
-          } else if (diffMs <= 12 * 60 * 60 * 1000 && !notified.includes('12h') && diffMs > 6 * 60 * 60 * 1000 && deadlineSettings['12h']) {
-            triggerDeadlineAlert('12h', 'less than 12 hours');
-          } else if (diffMs <= 24 * 60 * 60 * 1000 && !notified.includes('1d') && diffMs > 12 * 60 * 60 * 1000 && deadlineSettings['1d']) {
-            triggerDeadlineAlert('1d', 'less than 24 hours');
+          const sortedActiveKeys = Object.keys(deadlineSettings)
+            .filter((k) => deadlineSettings[k])
+            .sort((a, b) => parseThresholdToMs(a) - parseThresholdToMs(b));
+
+          for (let i = 0; i < sortedActiveKeys.length; i++) {
+            const key = sortedActiveKeys[i];
+            const thresholdMs = parseThresholdToMs(key);
+            const prevKey = i > 0 ? sortedActiveKeys[i - 1] : null;
+            const prevThresholdMs = prevKey ? parseThresholdToMs(prevKey) : 0;
+
+            if (diffMs <= thresholdMs && diffMs > prevThresholdMs && !notified.includes(key)) {
+              triggerDeadlineAlert(key, `less than ${formatThresholdTimeLabel(key)}`);
+              break;
+            }
           }
         }
       }
@@ -1112,14 +1164,13 @@ function App() {
         {/* Responsive Header Day selection tabs */}
         <div className={`w-full bg-white/[0.02] backdrop-blur-md border-b px-3 md:px-6 py-3 flex items-center justify-between gap-2 md:gap-4 transition-colors duration-500 ${themeConfig.borderClass}`}>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            <div className={`flex items-center gap-2 font-mono text-xs font-bold tracking-widest uppercase transition-colors duration-500 ${themeConfig.accentTextClass}`}>
+            <div className={`flex items-center gap-2 font-sans text-sm font-bold tracking-wide transition-colors duration-500 ${themeConfig.accentTextClass}`}>
               <img 
                 src={logoSrc} 
                 alt="Logo" 
                 className="w-5 h-5 object-contain shrink-0" 
               />
-              <span className="hidden sm:inline">SylphySched Weekly</span>
-              <span className="sm:hidden text-[10px] tracking-wider">SylphySched</span>
+              <span>SylphySched</span>
             </div>
             {/* View Toggle */}
             <div className={`hidden lg:flex bg-matte-black/40 border rounded-full p-0.5 transition-colors duration-500 ${themeConfig.borderClass} shrink-0`}>
@@ -1357,6 +1408,20 @@ function App() {
         onConfirm={() => {
           handleRequestPermission();
           setIsPermissionModalOpen(false);
+        }}
+        themeConfig={themeConfig}
+      />
+
+      {/* Soft Location Permission Modal */}
+      <LocationPermissionModal
+        isOpen={isLocationModalOpen}
+        onClose={() => {
+          localStorage.setItem('sylphy_location_modal_dismissed', 'true');
+          setIsLocationModalOpen(false);
+        }}
+        onConfirm={() => {
+          handleRequestLocation();
+          setIsLocationModalOpen(false);
         }}
         themeConfig={themeConfig}
       />

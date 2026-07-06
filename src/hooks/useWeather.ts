@@ -5,12 +5,14 @@ export interface WeatherData {
   condition: 'Sunny' | 'Cloudy' | 'Rainy' | 'Stormy';
   description: string;
   isSimulated: boolean;
+  locationName: string;
 }
 
 interface WeatherCache {
   temp: number;
   condition: 'Sunny' | 'Cloudy' | 'Rainy' | 'Stormy';
   description: string;
+  locationName: string;
   timestamp: number;
 }
 
@@ -32,6 +34,15 @@ const mapCondition = (id: number): 'Sunny' | 'Cloudy' | 'Rainy' | 'Stormy' => {
  * Falls back to high-fidelity simulated weather based on virtual time if offline/no key is found.
  */
 export const useWeather = (virtualTime: Date): WeatherData => {
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('sylphy_weather_coords');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const [weather, setWeather] = useState<WeatherData>(() => {
     // Attempt to load from cache on initialization
     try {
@@ -44,6 +55,7 @@ export const useWeather = (virtualTime: Date): WeatherData => {
             condition: data.condition,
             description: data.description,
             isSimulated: false,
+            locationName: data.locationName || 'Antipolo',
           };
         }
       }
@@ -53,6 +65,23 @@ export const useWeather = (virtualTime: Date): WeatherData => {
     // Return standard fallback initially
     return getSimulatedWeather(virtualTime);
   });
+
+  // Listen to coordinate updates fired from App.tsx Location modal
+  useEffect(() => {
+    const handleLocationRequest = () => {
+      try {
+        const saved = localStorage.getItem('sylphy_weather_coords');
+        if (saved) {
+          setCoords(JSON.parse(saved));
+        }
+      } catch (e) {
+        console.error('Failed to reload coordinates in weather hook:', e);
+      }
+    };
+
+    window.addEventListener('sylphy-request-geolocation', handleLocationRequest);
+    return () => window.removeEventListener('sylphy-request-geolocation', handleLocationRequest);
+  }, []);
 
   useEffect(() => {
     const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
@@ -74,6 +103,7 @@ export const useWeather = (virtualTime: Date): WeatherData => {
               condition: data.condition,
               description: data.description,
               isSimulated: false,
+              locationName: data.locationName || 'Antipolo',
             });
             return;
           }
@@ -83,10 +113,12 @@ export const useWeather = (virtualTime: Date): WeatherData => {
       }
 
       try {
-        // Antipolo, Calabarzon, PH coordinate or city query
-        const res = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?q=Antipolo,PH&appid=${apiKey}&units=metric`
-        );
+        // Dynamic fetch depending on coords presence
+        const url = coords
+          ? `https://api.openweathermap.org/data/2.5/weather?lat=${coords.lat}&lon=${coords.lon}&appid=${apiKey}&units=metric`
+          : `https://api.openweathermap.org/data/2.5/weather?q=Antipolo,PH&appid=${apiKey}&units=metric`;
+
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Weather API error');
         
         const data = await res.json();
@@ -94,11 +126,13 @@ export const useWeather = (virtualTime: Date): WeatherData => {
         const temp = Math.round(data.main?.temp ?? 28);
         const condition = mapCondition(rawId);
         const description = data.weather[0]?.description || 'Clear sky';
+        const locationName = data.name || 'Antipolo';
 
         const cacheData: WeatherCache = {
           temp,
           condition,
           description,
+          locationName,
           timestamp: Date.now(),
         };
         localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
@@ -108,6 +142,7 @@ export const useWeather = (virtualTime: Date): WeatherData => {
           condition,
           description,
           isSimulated: false,
+          locationName,
         });
       } catch (err) {
         console.warn('Live weather request failed, falling back to simulated weather:', err);
@@ -119,7 +154,7 @@ export const useWeather = (virtualTime: Date): WeatherData => {
     // Refresh weather every 10 minutes (or if time ticks dramatically)
     const interval = setInterval(fetchLiveWeather, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [virtualTime]);
+  }, [virtualTime, coords]);
 
   return weather;
 };
@@ -196,5 +231,6 @@ const getSimulatedWeather = (time: Date): WeatherData => {
     condition,
     description: description.toLowerCase(),
     isSimulated: true,
+    locationName: 'Antipolo',
   };
 };
