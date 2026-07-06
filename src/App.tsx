@@ -227,6 +227,7 @@ function App() {
   // Theme state
   const [theme, setTheme] = useState<ThemeName>('dark');
   const themeConfig = useMemo(() => THEME_CONFIGS[theme], [theme]);
+  const logoSrc = useMemo(() => theme === 'light' ? '/LogoBlack.png' : '/LogoBluelight.png', [theme]);
 
   // View state: timeline or vault or chat or control
   const [view, setView] = useState<'timeline' | 'vault' | 'chat' | 'control'>('timeline');
@@ -1111,20 +1112,14 @@ function App() {
         {/* Responsive Header Day selection tabs */}
         <div className={`w-full bg-white/[0.02] backdrop-blur-md border-b px-3 md:px-6 py-3 flex items-center justify-between gap-2 md:gap-4 transition-colors duration-500 ${themeConfig.borderClass}`}>
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            <div className={`flex items-center gap-1.5 md:gap-2 font-mono text-xs font-bold tracking-widest uppercase transition-colors duration-500 ${themeConfig.accentTextClass}`}>
-              <span className="shrink-0">
-                {view === 'timeline' && <Calendar className="w-4 h-4" />}
-                {view === 'vault' && <ClipboardList className="w-4 h-4" />}
-                {view === 'chat' && <MessageSquare className="w-4 h-4" />}
-                {view === 'control' && <SlidersHorizontal className="w-4 h-4" />}
-              </span>
-              <span className="hidden lg:inline">SylphySched Weekly</span>
-              <span className="lg:hidden">
-                {view === 'timeline' && 'Sylphy'}
-                {view === 'vault' && 'Notes'}
-                {view === 'chat' && 'Sylphy Chat'}
-                {view === 'control' && 'Control'}
-              </span>
+            <div className={`flex items-center gap-2 font-mono text-xs font-bold tracking-widest uppercase transition-colors duration-500 ${themeConfig.accentTextClass}`}>
+              <img 
+                src={logoSrc} 
+                alt="Logo" 
+                className="w-5 h-5 object-contain shrink-0" 
+              />
+              <span className="hidden sm:inline">SylphySched Weekly</span>
+              <span className="sm:hidden text-[10px] tracking-wider">SylphySched</span>
             </div>
             {/* View Toggle */}
             <div className={`hidden lg:flex bg-matte-black/40 border rounded-full p-0.5 transition-colors duration-500 ${themeConfig.borderClass} shrink-0`}>

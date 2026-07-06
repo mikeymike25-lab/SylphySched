@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, ShieldAlert, Loader2 } from 'lucide-react';
+import { ShieldAlert, Loader2 } from 'lucide-react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider, facebookProvider } from '../utils/firebase';
 
@@ -63,9 +63,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         </span>
 
         {/* Brand/App Symbol */}
-        <div className="w-14 h-14 rounded-full border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-inner relative group">
-          <div className="absolute inset-0 rounded-full blur-md opacity-20 bg-cyan-400 group-hover:opacity-40 transition-opacity duration-500" />
-          <Calendar className="w-6 h-6 text-white group-hover:scale-110 transition-transform duration-300" />
+        <div className="w-16 h-16 flex items-center justify-center relative group">
+          <div className="absolute inset-0 rounded-full blur-xl opacity-20 bg-cyan-400 group-hover:opacity-45 transition-opacity duration-500" />
+          <img 
+            src="/LogoBluelight.png" 
+            alt="SylphySched Logo" 
+            className="w-14 h-14 object-contain z-10 transition-transform duration-300 group-hover:scale-110" 
+          />
         </div>
 
         {/* Title & Desc */}
