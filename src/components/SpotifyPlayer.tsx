@@ -266,18 +266,31 @@ export const SpotifyPlayer: React.FC<SpotifyPlayerProps> = ({
 
       // Check if track is liked in library
       let isLiked = false;
-      try {
-        const likedRes = await fetch(`https://api.spotify.com/v1/me/tracks/contains?ids=${data.item.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (likedRes.ok) {
-          const likedData = await likedRes.json();
-          isLiked = likedData[0] || false;
-          console.log('SpotifyPlayer: Read like status:', isLiked);
+      if (sessionStorage.getItem('spotify_skip_library_check') !== 'true') {
+        try {
+          const likedRes = await fetch(`https://api.spotify.com/v1/me/tracks/contains?ids=${data.item.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (likedRes.ok) {
+            const likedData = await likedRes.json();
+            isLiked = likedData[0] || false;
+          } else if (likedRes.status === 403) {
+            console.warn('SpotifyPlayer: 403 Forbidden on library check. Disabling further checks to prevent console spam.');
+            sessionStorage.setItem('spotify_skip_library_check', 'true');
+          } else {
+            console.warn('SpotifyPlayer: Could not read like status, setting to false. Status:', likedRes.status);
+          }
+        } catch (e) {
+          console.warn('Could not read Spotify library status:', e);
         }
-      } catch (e) {
-        console.warn('Could not read Spotify library status:', e);
       }
+
+      let albumArtUrl = '/placeholder-album.png'; // fallback
+      if (data.item.album && data.item.album.images && data.item.album.images.length > 0) {
+        albumArtUrl = data.item.album.images[0].url;
+      }
+      
+      console.log('SpotifyPlayer: Parsed Album Art URL:', albumArtUrl);
 
       if (isMountedRef.current) {
         setErrorMsg(null);
@@ -285,7 +298,7 @@ export const SpotifyPlayer: React.FC<SpotifyPlayerProps> = ({
           id: data.item.id,
           title: data.item.name,
           artist: data.item.artists.map((a: any) => a.name).join(', '),
-          albumArtUrl: data.item.album.images[0]?.url || '',
+          albumArtUrl: albumArtUrl,
           isPlaying: data.is_playing,
           progressMs: data.progress_ms || 0,
           durationMs: data.item.duration_ms || 0,
