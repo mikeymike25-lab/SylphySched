@@ -24,4 +24,4 @@ jobs:
       - name: Run Push Dispatcher Script
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node scratch/fcm_sender.js
+        run: node scratch/fcm_sender.cjs
