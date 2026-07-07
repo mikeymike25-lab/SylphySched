@@ -140,7 +140,8 @@ export const SpotifyPlayer: React.FC<SpotifyPlayerProps> = ({
       code_challenge_method: 'S256',
       code_challenge: challenge,
       state: verifier, // Pass verifier directly inside the state query param to solve cross-origin LocalStorage sandboxing!
-      scope: scopes
+      scope: scopes,
+      show_dialog: 'true'
     });
 
     window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
