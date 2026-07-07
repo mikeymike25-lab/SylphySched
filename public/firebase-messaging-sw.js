@@ -4,12 +4,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.15.0/firebase-messaging-com
 
 // Initialize the Firebase app in the service worker
 firebase.initializeApp({
-  apiKey: "AIzaSyDK0M9fLTrG1T3-Nw1u2CDc654QeLymPSQ",
-  authDomain: "sylphysched.firebaseapp.com",
-  projectId: "sylphysched",
-  storageBucket: "sylphysched.firebasestorage.app",
-  messagingSenderId: "533629262445",
-  appId: "1:533629262445:web:e7bb4d4c1ac640a76dfd64"
+  apiKey: "__VITE_FIREBASE_API_KEY__",
+  authDomain: "__VITE_FIREBASE_AUTH_DOMAIN__",
+  projectId: "__VITE_FIREBASE_PROJECT_ID__",
+  storageBucket: "__VITE_FIREBASE_STORAGE_BUCKET__",
+  messagingSenderId: "__VITE_FIREBASE_MESSAGING_SENDER_ID__",
+  appId: "__VITE_FIREBASE_APP_ID__"
 });
 
 // Retrieve an instance of Firebase Cloud Messaging
