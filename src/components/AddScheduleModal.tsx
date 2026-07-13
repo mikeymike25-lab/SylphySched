@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Sparkles, Calendar, Clock, MapPin, User, Trash2, Edit3, Check, Loader2 } from 'lucide-react';
 import type { ThemeConfig } from '../types';
+import { timeToMinutes } from './AscendingTimeline';
 import {
   parseRawScheduleTextOffline,
   parseRawScheduleTextWithGemini,
@@ -83,6 +84,11 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
       return;
     }
 
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      addToast('system', 'Validation Error', 'End time must be after start time.', 'SYSTEM');
+      return;
+    }
+
     const newItem = {
       id: Math.random().toString(36).substring(2, 9),
       day: selectedDay,
@@ -146,6 +152,11 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
   };
 
   const handleSaveEdit = (tempId: string) => {
+    if (timeToMinutes(editEnd) <= timeToMinutes(editStart)) {
+      addToast('system', 'Validation Error', 'End time must be after start time.', 'SYSTEM');
+      return;
+    }
+
     setParsedItems(prev => prev.map(item => {
       if (item.tempId === tempId) {
         return {
@@ -170,6 +181,13 @@ export const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
   const handleImportAll = () => {
     if (parsedItems.length === 0) return;
     
+    // Validate all parsed items have end_time after start_time
+    const invalidItems = parsedItems.filter(item => timeToMinutes(item.end_time) <= timeToMinutes(item.start_time));
+    if (invalidItems.length > 0) {
+      addToast('system', 'Validation Error', `Some classes have invalid times (end time before start time). Please edit or delete them before importing.`, 'SYSTEM');
+      return;
+    }
+
     const formattedItems = parsedItems.map(item => ({
       id: Math.random().toString(36).substring(2, 9),
       day: item.day,

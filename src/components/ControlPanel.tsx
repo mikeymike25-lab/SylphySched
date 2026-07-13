@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, RotateCcw, FastForward, Info, BarChart2, Calendar, ShieldAlert, X, BookOpen, Sparkles, Copy, Check } from 'lucide-react';
 import type { ScheduleItem, ThemeConfig } from '../types';
-import { timeToMinutes, toStandardTime } from './AscendingTimeline';
+import { timeToMinutes, toStandardTime, getScheduleConflicts } from './AscendingTimeline';
 import type { Inspiration } from '../utils/inspiration';
 import { SpotifyPlayer } from './SpotifyPlayer';
 
@@ -73,6 +73,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   mode = 'sidebar',
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
+  const conflicts = useMemo(() => getScheduleConflicts(scheduleItems), [scheduleItems]);
+  const hasConflicts = Object.keys(conflicts).length > 0;
 
   const handleCopy = () => {
     const textToCopy = `Daily Inspiration\n\nVerse: "${dailyInspiration.verse}" — ${dailyInspiration.verseReference}\n\nQuote: "${dailyInspiration.quote}" — ${dailyInspiration.quoteAuthor}`;
@@ -236,6 +238,23 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <span>{formattedDate}</span>
         </div>
       </div>
+
+      {/* Schedule Conflicts Banner */}
+      {hasConflicts && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mb-6 p-4 rounded-[22px] border border-rose-500/20 bg-rose-500/5 text-rose-400 text-left text-xs leading-relaxed flex items-start gap-2.5 backdrop-blur-md shrink-0"
+        >
+          <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[9px] tracking-widest font-bold uppercase text-rose-400/80">Conflict Warning</span>
+            <p className="text-[11px] font-sans">
+              You have overlapping tasks/classes scheduled at the same time. Please adjust your start and end times to resolve this.
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Dynamic Status / Next Up */}
       <div className="flex-1 flex flex-col gap-6 shrink-0">

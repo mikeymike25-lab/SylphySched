@@ -21,7 +21,7 @@ import { WeatherWidget } from './components/WeatherWidget';
 // Firebase Client SDK Modules
 import { auth, db, getFirebaseMessaging } from './utils/firebase';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getToken } from 'firebase/messaging';
 
 // Web Audio API Synthesizer Tone Generator (CORS-free custom sound effects)
@@ -525,11 +525,18 @@ function App() {
         unsubscribeSnapshotRef.current = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
-            if (data.schedule) setSchedule(data.schedule);
-            if (data.notes) setNotes(data.notes);
+            const loadedSchedule = data.schedule || {};
+            const loadedNotes = data.notes || {};
+            setSchedule(loadedSchedule);
+            setNotes(loadedNotes);
+            localStorage.setItem('sylphy_schedule_v3', JSON.stringify(loadedSchedule));
+            localStorage.setItem('sylphy_notes', JSON.stringify(loadedNotes));
           } else {
-            // New user - start with empty schedule and trigger welcome onboarding modal
+            // New user - start with empty schedule and notes, and trigger welcome onboarding modal
             setSchedule({});
+            setNotes({});
+            localStorage.removeItem('sylphy_schedule_v3');
+            localStorage.removeItem('sylphy_notes');
             setIsWelcomeModalOpen(true);
           }
           setAuthLoading(false);
@@ -538,6 +545,15 @@ function App() {
           setAuthLoading(false);
         });
       } else {
+        setSchedule(WEEKLY_SCHEDULE);
+        setNotes({});
+        // Clear all user-specific localStorage items to prevent leakage
+        localStorage.removeItem('sylphy_schedule_v3');
+        localStorage.removeItem('sylphy_notes');
+        localStorage.removeItem('sylphy_chat_messages');
+        localStorage.removeItem('spotify_token');
+        localStorage.removeItem('sylphy_last_alerted_start_id');
+        localStorage.removeItem('sylphy_last_alerted_end_id');
         setAuthLoading(false);
       }
     });
@@ -550,7 +566,35 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      // 1. Delete FCM token from Firestore if user has granted permission and token exists
+      if (auth.currentUser && permission === 'granted') {
+        const messaging = await getFirebaseMessaging();
+        if (messaging) {
+          const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+          if (vapidKey) {
+            const token = await getToken(messaging, { vapidKey });
+            if (token) {
+              const tokenDocRef = doc(db, 'users', auth.currentUser.uid, 'tokens', token);
+              await deleteDoc(tokenDocRef);
+              console.log('FCM Token successfully removed from Firestore on logout.');
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to clean up FCM token on logout:', err);
+    }
+
+    try {
       await signOut(auth);
+      // 2. Clear all user-specific local storage items
+      localStorage.removeItem('sylphy_schedule_v3');
+      localStorage.removeItem('sylphy_notes');
+      localStorage.removeItem('sylphy_chat_messages');
+      localStorage.removeItem('spotify_token');
+      localStorage.removeItem('sylphy_last_alerted_start_id');
+      localStorage.removeItem('sylphy_last_alerted_end_id');
+      
       setSchedule(WEEKLY_SCHEDULE);
       setNotes({});
     } catch (err) {
@@ -821,6 +865,8 @@ function App() {
 
   // Transition detection effect for starts & ends
   useEffect(() => {
+    if (!user || authLoading) return;
+
     const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
     
     // Sort items chronologically
@@ -843,7 +889,8 @@ function App() {
     prevDayRef.current = activeDay;
 
     // If manual jump occurred (e.g. delta > 10m in simulated time) or tab day was switched, update silently
-    if (timeDeltaMs > 10 * 60 * 1000 || dayChanged) {
+    const isManualWarp = isSimulating && timeDeltaMs > 10 * 60 * 1000;
+    if (isManualWarp || dayChanged) {
       setPrevActiveEventId(activeEventId);
       setLastCheckedMinutes(Math.floor(currentMin));
       return;
@@ -862,11 +909,11 @@ function App() {
     if (lastSentInterval !== currentInterval.toString()) {
       localStorage.setItem('sylphy_last_inspiration_interval', currentInterval.toString());
       
-      // Dispatch internal App toast
+      // Dispatch internal App toast (Combined Scripture & Motivation)
       addToast(
         'system',
-        'New Inspiration',
-        `"${dailyInspiration.verse}" — ${dailyInspiration.verseReference}`,
+        'Daily Inspiration',
+        `Scripture: "${dailyInspiration.verse}" (${dailyInspiration.verseReference})\n\nMotivation: "${dailyInspiration.quote}" (${dailyInspiration.quoteAuthor})`,
         'SYSTEM'
       );
 
@@ -976,7 +1023,19 @@ function App() {
     }
 
     setPrevActiveEventId(activeEventId);
-  }, [currentTime, activeDaySchedule, activeDay, prevActiveEventId, lastCheckedMinutes, permission, dailyInspiration, notes]);
+  }, [
+    currentTime,
+    activeDaySchedule,
+    activeDay,
+    prevActiveEventId,
+    lastCheckedMinutes,
+    permission,
+    dailyInspiration,
+    notes,
+    isSimulating,
+    user,
+    authLoading,
+  ]);
 
   // Initialize last alerted start ID to the active class on load so we don't spam start alerts
   useEffect(() => {

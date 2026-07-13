@@ -39,6 +39,37 @@ export const minutesToStandardTime = (totalMinutes: number): string => {
   return toStandardTime(minutesToTime(totalMinutes));
 };
 
+// Helper to identify overlapping schedules
+export const getScheduleConflicts = (items: ScheduleItem[]): Record<string, string[]> => {
+  const conflicts: Record<string, string[]> = {};
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const a = items[i];
+      const b = items[j];
+      const aStart = timeToMinutes(a.start_time);
+      const aEnd = timeToMinutes(a.end_time);
+      const bStart = timeToMinutes(b.start_time);
+      const bEnd = timeToMinutes(b.end_time);
+      
+      if (aStart < bEnd && bStart < aEnd) {
+        if (!conflicts[a.id]) conflicts[a.id] = [];
+        if (!conflicts[b.id]) conflicts[b.id] = [];
+        conflicts[a.id].push(cleanSubjectName(b.subject_name));
+        conflicts[b.id].push(cleanSubjectName(a.subject_name));
+      }
+    }
+  }
+  return conflicts;
+};
+
+// Helper to clean subject name for conflict message
+const cleanSubjectName = (name: string): string => {
+  return name
+    .replace(/\s*-\s*Lab$/i, '')
+    .replace(/\s+Lab$/i, '')
+    .trim();
+};
+
 // Dynamically gets border, text, and active indicators based on subject codes
 const getSubjectColorStyles = (subjectName: string, isActive: boolean) => {
   const match = subjectName.match(/^([A-Z]+\s+\d+)/i);
@@ -146,6 +177,8 @@ export const AscendingTimeline: React.FC<AscendingTimelineProps> = ({
   onBlockClick,
   userName,
 }) => {
+  const conflicts = useMemo(() => getScheduleConflicts(scheduleItems), [scheduleItems]);
+
   // Scale factor: 1 minute = 1.6 pixels
   const pxPerMinute = 1.6;
 
@@ -382,6 +415,12 @@ export const AscendingTimeline: React.FC<AscendingTimelineProps> = ({
                         <span className="flex h-2 w-2 relative shrink-0">
                           <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${colorStyles.dot} opacity-75`}></span>
                           <span className={`relative inline-flex rounded-full h-2 w-2 ${colorStyles.dot}`}></span>
+                        </span>
+                      )}
+
+                      {conflicts[block.id] && conflicts[block.id].length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-medium bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center gap-1">
+                          <span>⚠️ Overlaps with {conflicts[block.id].join(', ')}</span>
                         </span>
                       )}
                     </div>
