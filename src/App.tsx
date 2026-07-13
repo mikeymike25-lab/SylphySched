@@ -822,6 +822,7 @@ function App() {
 
   // Real-time ticking effect
   useEffect(() => {
+    const delay = isSimulating ? 100 : 1000;
     const interval = setInterval(() => {
       if (isSimulating) {
         // Accelerate offset
@@ -830,7 +831,7 @@ function App() {
         // Standard real-time update
         setBaseTime(new Date());
       }
-    }, 100);
+    }, delay);
 
     return () => clearInterval(interval);
   }, [isSimulating, simSpeed]);
@@ -1055,7 +1056,17 @@ function App() {
   // Click handler to open Markdown notes slide-over
   const handleBlockClick = (block: any) => {
     if (block.type === 'gap') return;
-    const item = activeDaySchedule.find((item) => item.id === block.id);
+    
+    // Find across all days in the schedule
+    let item = null;
+    for (const day of Object.keys(schedule)) {
+      const found = (schedule[day] || []).find((i) => i.id === block.id);
+      if (found) {
+        item = found;
+        break;
+      }
+    }
+
     if (item) {
       setSelectedBlock(item);
       setIsNoteOpen(true);
@@ -1413,6 +1424,7 @@ function App() {
               themeConfig={themeConfig}
               onBlockClick={handleBlockClick}
               currentTime={currentTime}
+              userName={user?.displayName || user?.email}
             />
           )}
           {view === 'vault' && (
