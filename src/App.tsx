@@ -12,6 +12,7 @@ import { WelcomeModal } from './components/WelcomeModal';
 import { SylphyChat } from './components/SylphyChat';
 import { NotificationPermissionModal } from './components/NotificationPermissionModal';
 import { LocationPermissionModal } from './components/LocationPermissionModal';
+import { WeeklyGridView } from './components/WeeklyGridView';
 import type { ScheduleItem, ToastMessage, ThemeName, ThemeConfig, Note } from './types';
 import { Calendar, SlidersHorizontal, Loader2, User, Plus, MessageSquare, ClipboardList } from 'lucide-react';
 import { getDailyInspiration } from './utils/inspiration';
@@ -257,6 +258,7 @@ function App() {
 
   // View state: timeline or vault or chat or control
   const [view, setView] = useState<'timeline' | 'vault' | 'chat' | 'control'>('timeline');
+  const [scheduleLayout, setScheduleLayout] = useState<'day' | 'week'>('day');
 
   // Firebase User & Settings Drawer states
   const [user, setUser] = useState<any>(null);
@@ -1325,50 +1327,92 @@ function App() {
           </div>
         </div>
 
-        {/* Sub-header with Day Selection Tabs (Timeline view only, responsive and scroll-safe) */}
+        {/* Sub-header with Layout Toggle and Day Selection Tabs (Timeline view only, responsive and scroll-safe) */}
         {view === 'timeline' && (
-          <div className={`w-full bg-white/[0.02] backdrop-blur-md border-b py-2.5 px-4 overflow-x-auto flex justify-center shrink-0 transition-colors duration-500 ${themeConfig.borderClass}`}>
-            <div className={`flex bg-matte-black/40 border rounded-full p-1 overflow-x-auto scrollbar-none flex-nowrap shrink-0 transition-colors duration-500 ${themeConfig.borderClass}`}>
-              {DAYS_OF_WEEK.map((day) => {
-                const isActive = activeDay === day;
-                const hasClasses = (schedule[day] || []).length > 0;
-                
-                const activeBtnStyle = isActive
-                  ? theme === 'dark'
-                    ? 'bg-white/[0.08] text-cyber-cyan font-bold border border-white/10 shadow-[0_0_8px_rgba(0,229,255,0.15)]'
-                    : theme === 'light'
-                      ? 'bg-slate-900 text-white font-bold border border-slate-900/10 shadow-sm'
-                      : theme === 'pink'
-                        ? 'bg-pink-500 text-white font-bold border border-pink-500/25 shadow-sm'
-                        : 'bg-sky-600 text-white font-bold border border-sky-500/25 shadow-sm'
-                  : `${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.03]`;
-
-                return (
-                  <button
-                    key={day}
-                    onClick={() => setActiveDay(day)}
-                    className={`px-3.5 py-1 text-[9.5px] font-mono tracking-wider rounded-full cursor-pointer transition-all duration-300 shrink-0
-                      ${activeBtnStyle}
-                      ${!hasClasses && 'opacity-40'}
-                    `}
-                  >
-                    {day.slice(0, 3).toUpperCase()}
-                  </button>
-                );
-              })}
+          <div className={`w-full bg-white/[0.02] backdrop-blur-md border-b py-2.5 px-6 flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0 transition-colors duration-500 ${themeConfig.borderClass}`}>
+            
+            {/* Layout Segmented Control: [ Day View ] [ Week View ] */}
+            <div className={`flex bg-matte-black/40 border rounded-full p-0.5 shrink-0 transition-colors duration-500 ${themeConfig.borderClass}`}>
+              <button
+                onClick={() => setScheduleLayout('day')}
+                className={`px-3 py-1 text-[9px] font-mono tracking-wider rounded-full cursor-pointer transition-all duration-300 flex items-center gap-1.5
+                  ${scheduleLayout === 'day'
+                    ? `${themeConfig.name === 'dark' ? 'bg-white/[0.08] text-cyber-cyan font-bold border border-white/10 shadow-[0_0_8px_rgba(0,229,255,0.15)]' : 'bg-slate-900 text-white font-bold border border-slate-900/10'}`
+                    : `${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.03]`
+                  }
+                `}
+              >
+                <span>DAY</span>
+              </button>
+              <button
+                onClick={() => setScheduleLayout('week')}
+                className={`px-3 py-1 text-[9px] font-mono tracking-wider rounded-full cursor-pointer transition-all duration-300 flex items-center gap-1.5
+                  ${scheduleLayout === 'week'
+                    ? `${themeConfig.name === 'dark' ? 'bg-white/[0.08] text-cyber-cyan font-bold border border-white/10 shadow-[0_0_8px_rgba(0,229,255,0.15)]' : 'bg-slate-900 text-white font-bold border border-slate-900/10'}`
+                    : `${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.03]`
+                  }
+                `}
+              >
+                <span>WEEK</span>
+              </button>
             </div>
+
+            {/* Day Selection Tabs (Only visible in Day layout) */}
+            {scheduleLayout === 'day' ? (
+              <div className={`flex bg-matte-black/40 border rounded-full p-1 overflow-x-auto scrollbar-none flex-nowrap shrink-0 transition-colors duration-500 ${themeConfig.borderClass}`}>
+                {DAYS_OF_WEEK.map((day) => {
+                  const isActive = activeDay === day;
+                  const hasClasses = (schedule[day] || []).length > 0;
+                  
+                  const activeBtnStyle = isActive
+                    ? theme === 'dark'
+                      ? 'bg-white/[0.08] text-cyber-cyan font-bold border border-white/10 shadow-[0_0_8px_rgba(0,229,255,0.15)]'
+                      : theme === 'light'
+                        ? 'bg-slate-900 text-white font-bold border border-slate-900/10 shadow-sm'
+                        : theme === 'pink'
+                          ? 'bg-pink-500 text-white font-bold border border-pink-500/25 shadow-sm'
+                          : 'bg-sky-600 text-white font-bold border border-sky-500/25 shadow-sm'
+                    : `${themeConfig.textDarkClass} hover:${themeConfig.textMutedClass} hover:bg-white/[0.03]`;
+
+                  return (
+                    <button
+                      key={day}
+                      onClick={() => setActiveDay(day)}
+                      className={`px-3.5 py-1 text-[9.5px] font-mono tracking-wider rounded-full cursor-pointer transition-all duration-300 shrink-0
+                        ${activeBtnStyle}
+                        ${!hasClasses && 'opacity-40'}
+                      `}
+                    >
+                      {day.slice(0, 3).toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={`text-[10.5px] font-mono select-none hidden sm:block ${themeConfig.textDarkClass}`}>
+                WEEK MATRIX ACTIVE
+              </div>
+            )}
           </div>
         )}
 
         {/* Timeline or Vault block area */}
         <div className="flex-1 overflow-hidden relative pb-24 lg:pb-0">
-          {view === 'timeline' && (
+          {view === 'timeline' && scheduleLayout === 'day' && (
             <AscendingTimeline
               scheduleItems={activeDaySchedule}
               currentTime={currentTime}
               themeConfig={themeConfig}
               onBlockClick={handleBlockClick}
               userName={user?.displayName}
+            />
+          )}
+          {view === 'timeline' && scheduleLayout === 'week' && (
+            <WeeklyGridView
+              schedule={schedule}
+              themeConfig={themeConfig}
+              onBlockClick={handleBlockClick}
+              currentTime={currentTime}
             />
           )}
           {view === 'vault' && (
